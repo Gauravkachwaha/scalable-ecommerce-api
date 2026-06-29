@@ -36,6 +36,7 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
     paymentInfo: {
+      orderId: String,
       paymentId: String,
       status: String,
       method: String,

@@ -2,6 +2,8 @@ import Order from "../models/order.js";
 import Product from "../models/product.js";
 import Cart from "../models/cart.js";
 
+const requiredShippingFields = ["address", "city", "postalCode", "country"];
+
 // Create a new order
 // Create a new order - Phase 5 (with MongoDB Transaction)
 const createOrder = async (req, res, next) => {
@@ -11,6 +13,30 @@ const createOrder = async (req, res, next) => {
     return res
       .status(400)
       .json({ success: false, message: "No items provided" });
+  }
+
+  const hasInvalidItem = items.some(
+    (item) =>
+      !item.product ||
+      !Number.isInteger(Number(item.quantity)) ||
+      Number(item.quantity) < 1,
+  );
+
+  if (hasInvalidItem) {
+    return res.status(400).json({
+      success: false,
+      message: "Each order item must include a product and positive quantity",
+    });
+  }
+
+  if (
+    !shippingAddress ||
+    requiredShippingFields.some((field) => !shippingAddress[field])
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Complete shipping address is required",
+    });
   }
 
   const session = await Order.startSession(); //This creates a temporary box (a session). We can put multiple operations inside this box, and if any of them fail, we can throw everything away and start over. This way, we ensure that all operations either succeed together or fail together, keeping our data consistent.
@@ -27,23 +53,25 @@ const createOrder = async (req, res, next) => {
         throw new Error(`Product with ID ${item.product} not found`);
       }
 
-      if (product.stock < item.quantity) {
+      const quantity = Number(item.quantity);
+
+      if (product.stock < quantity) {
         throw new Error(`Insufficient stock for product ${product.name}`);
       }
 
-      const itemTotal = product.price * item.quantity;
+      const itemTotal = product.price * quantity;
       totalAmount += itemTotal;
 
       orderItems.push({
         product: product._id,
-        quantity: item.quantity,
+        quantity,
         price: product.price,
       });
 
       // Reduce stock inside transaction
       await Product.findByIdAndUpdate(
         item.product,
-        { $inc: { stock: -item.quantity } },
+        { $inc: { stock: -quantity } },
         { session },
       );
     }

@@ -5,6 +5,19 @@ import Product from "../models/product.js";
 const addToCart = async (req, res, next) => {
   try {
     const { productId, quantity } = req.body;
+    const requestedQuantity = Number(quantity);
+
+    if (
+      !productId ||
+      !Number.isInteger(requestedQuantity) ||
+      requestedQuantity < 1
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid productId and quantity are required",
+      });
+    }
+
     const product = await Product.findById(productId);
     //if the product is not found in the database
     if (!product) {
@@ -13,7 +26,7 @@ const addToCart = async (req, res, next) => {
         .json({ success: false, message: "Product not found" });
     }
 
-    if (product.stock < quantity) {
+    if (product.stock < requestedQuantity) {
       return res
         .status(400)
         .json({ success: false, message: "Not enough stock available" });
@@ -32,13 +45,19 @@ const addToCart = async (req, res, next) => {
 
     //if it does not exist then add the product to the cart otherwise update the quantity of the product in the cart
     if (existingItem) {
+      if (product.stock < existingItem.quantity + requestedQuantity) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Not enough stock available" });
+      }
+
       // Update quantity
-      existingItem.quantity += Number(quantity);
+      existingItem.quantity += requestedQuantity;
     } else {
       // Add new item
       cart.items.push({
         product: productId,
-        quantity: Number(quantity),
+        quantity: requestedQuantity,
         price: product.price,
       });
     }
@@ -89,6 +108,14 @@ const updateCartItem = async (req, res, next) => {
     const { productId } = req.params;
     //we are getting the quantity from the request body
     const { quantity } = req.body;
+    const requestedQuantity = Number(quantity);
+
+    if (!Number.isInteger(requestedQuantity) || requestedQuantity < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be a positive integer",
+      });
+    }
 
     let cart = await Cart.findOne({ userId: req.user.id });
     //id the cart does not exist
@@ -99,12 +126,26 @@ const updateCartItem = async (req, res, next) => {
     }
 
     const product = await Product.findById(productId);
-    if (product.stock < quantity) {
-      res.status(400);
-      throw new Error("Not enough stock");
+    if (!product) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
 
-    item.quantity = Number(quantity);
+    const item = cart.items.find((i) => i.product.toString() === productId);
+    if (!item) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found in cart" });
+    }
+
+    if (product.stock < requestedQuantity) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Not enough stock" });
+    }
+
+    item.quantity = requestedQuantity;
     await cart.save();
 
     res.status(200).json({ success: true, cart });
@@ -135,7 +176,7 @@ const removeFromCart = async (req, res, next) => {
 };
 
 // Clear entire cart
-const clearCart = async (req, res) => {
+const clearCart = async (req, res, next) => {
   try {
     const cart = await Cart.findOne({ userId: req.user.id });
     if (cart) {

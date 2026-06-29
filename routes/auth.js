@@ -1,5 +1,5 @@
 import express from "express";
-import { register,login} from "../controllers/authControllers.js";
+import { bootstrapAdmin, register, login } from "../controllers/authControllers.js";
 
 const router = express.Router();
 
@@ -7,5 +7,7 @@ const router = express.Router();
 router.post("/register", register);
 // Login route
 router.post("/login", login);
+// One-time admin bootstrap route. Requires ADMIN_BOOTSTRAP_SECRET.
+router.post("/bootstrap-admin", bootstrapAdmin);
 
 export default router;

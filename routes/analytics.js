@@ -6,13 +6,15 @@ import {
   getTopProducts,
   getDailySales,
 } from "../controllers/analyticsController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/summary", protect, getSalesAnalytics);
-router.get("/category", protect, getRevenueByCategory);
-router.get("/top-products", protect, getTopProducts);
-router.get("/daily", protect, getDailySales);
+router.use(protect, authorizeRoles("admin"));
+
+router.get("/summary", getSalesAnalytics);
+router.get("/category", getRevenueByCategory);
+router.get("/top-products", getTopProducts);
+router.get("/daily", getDailySales);
 
 export default router;
