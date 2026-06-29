@@ -27,21 +27,24 @@
 
 The following diagram illustrates the client-server request pipeline and data flow through the architecture:
 
-![E-Commerce API Architecture](file:///d:/Projects/4.%20E%20commerece/ain/assets/project_flow.png)
+![E-Commerce API Architecture](assets/project_flow.png)
 
-### 🛠️ Tech Stack & Directory Structure
-* **Runtime & Framework:** Node.js (ES Modules) + Express.js
-* **Database & ODM:** MongoDB + Mongoose (ACID Transactions enabled)
-* **Security:** JWT Authentication + bcryptjs Password Hashing
-* **Third-Party Services:** Razorpay Payments + Multer File Uploads
-* **File Structure:**
-  * [server.js](file:///d:/Projects/4.%20E%20commerece/ain/server.js) — Application entry point
-  * `controllers/` — Request handlers & business logic
-  * `models/` — Database schemas (User, Product, Cart, Order)
-  * `routes/` — Endpoint mapping
-  * `middleware/` — Auth filters, image parser & error interceptor
-  * `utils/` — Transaction helpers & validation utilities
-  * [package.json](file:///d:/Projects/4.%20E%20commerece/ain/package.json) — Dependency & scripts manifest
+<details>
+<summary><b>🛠️ Directory & Module Architecture</b> (Click to expand)</summary>
+
+```text
+ain/
+  ├── assets/                 # Brand assets & architecture diagrams
+  ├── config/                 # Database connector & global configurations
+  ├── controllers/            # Request handlers (processes inputs, interacts with models)
+  ├── docs/                   # Full markdown API documentation
+  ├── middleware/             # Route interceptors (auth, role filters, uploads, error boundaries)
+  ├── models/                 # Mongoose schemas with validation and business constraints
+  ├── routes/                 # Express route mappings
+  ├── scripts/                # Utility scripts (syntax verification)
+  └── uploads/                # Local storage for product images (served statically)
+```
+</details>
 
 ---
 
@@ -93,35 +96,56 @@ sequenceDiagram
 
 ---
 
+## 🔐 Deep Dive: Core Features & Logic
+
+Here is an explanation of the core workflows implemented in the codebase:
+
+### 1. Atomic Order Processing (ACID Transactions)
+To prevent overselling and "ghost orders" (where multiple customers attempt to purchase the last item simultaneously), order creation uses MongoDB sessions & transactions:
+* **Concurrency Protection:** The server opens a transaction block, fetches the current stock of all cart items, checks availability, and decrements stock.
+* **Failure Handling:** If any product does not have enough stock, the entire transaction is rolled back, restoring initial values. No partial order is saved.
+
+### 2. Secure Webhook Validation
+Razorpay payment confirmations are handled via webhooks. To secure this against falsified payloads:
+* **Raw Body Buffer:** The express router captures the raw request payload before it is parsed into JSON.
+* **HMAC Verification:** The server generates a SHA-256 HMAC digest of the raw payload using the secret `RAZORPAY_WEBHOOK_SECRET` and compares it to the incoming `x-razorpay-signature` header.
+
+### 3. Aggregation-Based Admin Analytics
+To display sales insights, the admin dashboard pulls aggregate data from MongoDB:
+* **Daily Sales:** Groups orders by day and calculates cumulative revenue and average order values.
+* **Top Selling Products:** Unwinds the order items array, groups by product identifier, matches product details, and sorts by quantity sold.
+
+---
+
 ## 📡 API Directory (Summary)
 
-Detailed response formats and parameter specs are available in the [API.md](file:///d:/Projects/4.%20E%20commerece/ain/docs/API.md) document.
+Detailed response formats and parameter specs are available in the [docs/API.md](docs/API.md) document.
 
-| Category | Method | Endpoint | Access | Function |
+| Category | Method | Endpoint | Access | Key Payload / Query parameters |
 | :--- | :--- | :--- | :--- | :--- |
-| **Auth** | `POST` | `/api/auth/register` | Public | Register customer |
-| | `POST` | `/api/auth/login` | Public | Standard login (all roles) |
-| | `POST` | `/api/auth/bootstrap-admin` | Secret | One-time admin setup |
-| **Products** | `GET` | `/api/products` | Public | Search, filter, paginate catalog |
-| | `GET` | `/api/products/:id` | Public | Fetch product by ID |
-| | `POST` | `/api/products` | Admin | Create product with Multer uploads |
+| **Auth** | `POST` | `/api/auth/register` | Public | `name`, `username`, `email`, `password` |
+| | `POST` | `/api/auth/login` | Public | `username`, `password` |
+| | `POST` | `/api/auth/bootstrap-admin` | Secret | `bootstrapSecret` + User credentials |
+| **Products** | `GET` | `/api/products` | Public | Query: `keyword`, `category`, `minPrice`, `maxPrice`, `page`, `limit` |
+| | `GET` | `/api/products/:id` | Public | - |
+| | `POST` | `/api/products` | Admin | Multipart: `name`, `price`, `description`, `category`, `stock`, `images` |
 | | `PUT` | `/api/products/:id` | Admin | Modify product fields |
-| | `DELETE` | `/api/products/:id` | Admin | Remove product |
-| **Cart** | `GET` | `/api/cart` | Customer | Fetch current customer's cart |
-| | `POST` | `/api/cart` | Customer | Add/increment items |
-| | `PUT` | `/api/cart/:productId` | Customer | Update item quantity |
-| | `DELETE` | `/api/cart/:productId`| Customer | Remove item |
-| | `DELETE` | `/api/cart` | Customer | Clear entire cart |
-| **Orders** | `POST` | `/api/orders` | Customer | Checkout and place order |
-| | `GET` | `/api/orders` | Customer | List owned orders |
-| | `GET` | `/api/orders/:id` | Customer | Retrieve specific order detail |
-| **Payments** | `POST` | `/api/payment/create-order`| Customer | Create Razorpay order |
-| | `POST` | `/api/payment/webhook` | Razorpay | Verify signature & capture payment |
-| **Analytics**| `GET` | `/api/analytics/summary` | Admin | Total revenue, count & averages |
-| | `GET` | `/api/analytics/category`| Admin | Breakdown of sales by category |
-| | `GET` | `/api/analytics/top-products`| Admin | Best selling product lists |
-| | `GET` | `/api/analytics/daily` | Admin | Line chart data for daily metrics |
-| **System** | `GET` | `/health` | Public | API health check status |
+| | `DELETE` | `/api/products/:id` | Admin | - |
+| **Cart** | `GET` | `/api/cart` | Customer | - |
+| | `POST` | `/api/cart` | Customer | `productId`, `quantity` |
+| | `PUT` | `/api/cart/:productId` | Customer | `quantity` |
+| | `DELETE` | `/api/cart/:productId`| Customer | - |
+| | `DELETE` | `/api/cart` | Customer | - |
+| **Orders** | `POST` | `/api/orders` | Customer | `shippingAddress` (address, city, postalCode, country) |
+| | `GET` | `/api/orders` | Customer | - |
+| | `GET` | `/api/orders/:id` | Customer | - |
+| **Payments** | `POST` | `/api/payment/create-order`| Customer | `orderId` |
+| | `POST` | `/api/payment/webhook` | Razorpay | Webhook raw body + signature headers |
+| **Analytics**| `GET` | `/api/analytics/summary` | Admin | Overall metrics (revenue, total orders, averages) |
+| | `GET` | `/api/analytics/category`| Admin | Breakdown of revenue grouped by category |
+| | `GET` | `/api/analytics/top-products`| Admin | List of top products sorted by quantities sold |
+| | `GET` | `/api/analytics/daily` | Admin | Time-series data for daily revenue tracking |
+| **System** | `GET` | `/health` | Public | Standard health check response |
 
 ---
 
@@ -178,7 +202,7 @@ npm start
 # Run syntax check across JS codebase
 npm run check
 ```
-Runs a code health check with the [check-syntax.js](file:///d:/Projects/4.%20E%20commerece/ain/scripts/check-syntax.js) helper script.
+Runs a code health check with the [check-syntax.js](scripts/check-syntax.js) helper script.
 </details>
 
 ---
